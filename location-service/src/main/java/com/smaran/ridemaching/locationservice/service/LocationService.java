@@ -2,19 +2,89 @@ package com.smaran.ridemaching.locationservice.service;
 
 import com.smaran.ridemaching.locationservice.dto.DriverLocationRequest;
 import com.smaran.ridemaching.locationservice.dto.NearByDriverResponse;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
+import org.springframework.data.geo.*;
+import org.springframework.data.redis.connection.RedisGeoCommands;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
+@Slf4j
+@RequiredArgsConstructor
 public class LocationService {
+
+    private final RedisTemplate<String, String> redisTemplate;
+
+    //Redis key for all driver locations
+    private static final String DRIVERS_GEO_KEY= "drivers:locations";
+
     public void updateDriverLocation(DriverLocationRequest driverLocationRequest) {
+        log.info("Updating location for driver :{}", driverLocationRequest.getDriverId());
+
+        Point driverPoint = new Point(
+                driverLocationRequest.getLongitude(),
+                driverLocationRequest.getLatitude()
+        );
+
+        //opsForGeo method gives access to all Redis geospatial commands like GEOADD, GEOSEARCH, GEOPOS
+        redisTemplate.opsForGeo().add(
+                DRIVERS_GEO_KEY,
+                driverPoint,
+                driverLocationRequest.getDriverId()
+        );
+        log.info("Location updated for driver :{}", driverLocationRequest.getDriverId());
     }
 
-    public @Nullable List<NearByDriverResponse> findNearByDrivers(double latitude, double longitude, double radius) {
+    public @Nullable List<NearByDriverResponse> findNearByDrivers(
+            double latitude,
+            double longitude,
+            double radius
+    ) {
+        log.info("Finding drivers near lat: {} long: {} within {}Miles", latitude, longitude, radius);
+
+        Circle searchArea = new Circle(
+                new Point(longitude, latitude),
+                new Distance(radius, Metrics.MILES)
+        );
+
+        GeoResults<RedisGeoCommands.GeoLocation<String>> results =
+                redisTemplate.opsForGeo().radius(
+                    DRIVERS_GEO_KEY,
+                    searchArea,
+                    RedisGeoCommands.GeoRadiusCommandArgs.newGeoRadiusArgs()
+                            .includeCoordinates()
+                            .includeDistance()
+                            .sortAscending()
+                            .limit(10)
+        );
+
+        List<NearByDriverResponse> nearByDrivers = new ArrayList<>();
+        if(results !=null){
+            results.getContent().forEach(result ->{
+                RedisGeoCommands.GeoLocation<String> location = result.getContent();
+                nearByDrivers.add(new NearByDriverResponse(
+                        location.getName(),
+                        location.getPoint().getY(),
+                        location.getPoint().getX(),
+                        result.getDistance().getValue()
+                ));
+            });
+        }
+        log.info("Found {} drivers nearby", nearByDrivers.size());
+        return nearByDrivers;
     }
 
     public void removeDriver(String driverId) {
+        log.info("Removing driver: {}", driverId);
+
+        redisTemplate.opsForGeo().remove(
+                DRIVERS_GEO_KEY,
+                driverId
+        );
     }
 }
