@@ -2,6 +2,7 @@ package com.smaran.ridematching.matchingservice.client;
 
 import com.smaran.ridematching.matchingservice.dto.NearByDriverResponse;
 import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.context.annotation.Bean;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
