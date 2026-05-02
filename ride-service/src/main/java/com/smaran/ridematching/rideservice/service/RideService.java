@@ -6,14 +6,15 @@ import com.smaran.ridematching.rideservice.dto.RideResponse;
 import com.smaran.ridematching.rideservice.event.RideRequestedEvent;
 import com.smaran.ridematching.rideservice.model.Ride;
 import com.smaran.ridematching.rideservice.model.RideStatus;
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -64,6 +65,95 @@ public class RideService {
         return mapToResponse(savedRide);
     }
 
+    //Called by matching service when a driver is found and updates the ride status to ACCEPTED and assigns
+    //driver id
+    public void updateRideWithDriver(String rideID, String driverId){
+        Ride ride= rideRepository.findById(rideID)
+                .orElseThrow(() -> new RuntimeException("Ride not found"));
+
+        ride.setDriverId(driverId);
+        ride.setStatus(RideStatus.ACCEPTED);
+        rideRepository.save(ride);
+
+    }
+
+    public RideResponse getRideById(String rideId) {
+        Ride ride= rideRepository.findById(rideId)
+                .orElseThrow(() -> new RuntimeException("Ride not found"));
+
+        return mapToResponse(ride);
+    }
+
+    public  List<RideResponse> getRidesByRider(String riderId) {
+        return rideRepository.findByRiderIdOrderByCreatedAtDesc(riderId)
+                .stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    public RideResponse startRide(String rideId) {
+        Ride ride= rideRepository.findById(rideId)
+                .orElseThrow(() -> new RuntimeException("Ride not found"));
+
+        if(ride.getStatus()!=RideStatus.ACCEPTED){
+            throw new RuntimeException("Ride cannot be started. Current status : " + ride.getStatus());
+        }
+
+        ride.setStatus(RideStatus.RIDE_STARTED);
+        ride.setStartedAt(LocalDateTime.now());
+        rideRepository.save(ride);
+
+        return mapToResponse(ride);
+    }
+
+    public  RideResponse completeRide(String rideId) {
+        Ride ride= rideRepository.findById(rideId)
+                .orElseThrow(() -> new RuntimeException("Ride not found"));
+
+        if(ride.getStatus()!=RideStatus.RIDE_STARTED){
+            throw new RuntimeException("Ride cannot be completed. Current status : " + ride.getStatus());
+        }
+
+        ride.setStatus(RideStatus.COMPLETED);
+        ride.setCompletedAt(LocalDateTime.now());
+        rideRepository.save(ride);
+        ride.setActualFare(ride.getEstimatedFare());
+        return mapToResponse(ride);
+    }
+
+    public  RideResponse cancelRide(String rideId) {
+        Ride ride= rideRepository.findById(rideId)
+                .orElseThrow(() -> new RuntimeException("Ride not found"));
+
+        ride.setStatus(RideStatus.CANCELLED);
+        rideRepository.save(ride);
+        return mapToResponse(ride);
+    }
+
+    private double calculateEstimateFare(RideRequest request) {
+        //Calculate distance with Haversine distance calculation
+        double lat1=Math.toRadians(request.getPickupLatitude());
+        double lat2=Math.toRadians(request.getDropLatitude());
+
+        double lon1=Math.toRadians(request.getPickupLongitude());
+        double lon2=Math.toRadians(request.getDropLongitude());
+
+        double latDifference = lat2 - lat1;
+        double lonDifference = lon2 - lon1;
+
+        double intermediate = Math.pow(Math.sin(latDifference/2), 2)
+                + Math.cos(lat1) * Math.cos(lat2)
+                * Math.pow(Math.sin(lonDifference/2),2);
+
+        double angleBetweenTwoPoints = 2 * Math.asin(Math.sqrt(intermediate));
+
+        double distanceMiles = 3959 * angleBetweenTwoPoints;
+
+        //5 dollars base plus 1.5/miles
+        double fair = 5 + (distanceMiles * 1.5);
+        return Math.round(fair * 100.0) / 100.0;
+    }
+
     public RideResponse mapToResponse(Ride ride){
         RideResponse response = new RideResponse();
         response.setId(ride.getId());
@@ -83,20 +173,5 @@ public class RideService {
         response.setCompletedAt(ride.getCompletedAt());
 
         return response;
-    }
-
-    public Object getRideById(String rideId) {
-    }
-
-    public @Nullable List<RideResponse> getRiderByRider(String riderId) {
-    }
-
-    public @Nullable RideResponse startRide(String rideId) {
-    }
-
-    public @Nullable RideResponse completeRide(String rideId) {
-    }
-
-    public @Nullable RideResponse cancelRide(String rideId) {
     }
 }

@@ -33,7 +33,7 @@ public class RideController {
 
 
     @GetMapping("/{rideId}")
-    public RequestEntity<RideResponse> getRideById(
+    public ResponseEntity<RideResponse> getRideById(
             @PathVariable String rideId
     ){
         return ResponseEntity.ok(rideService.getRideById(rideId));
@@ -42,7 +42,7 @@ public class RideController {
     @GetMapping("/rider/{riderId}")
     public ResponseEntity<List<RideResponse>> getRideByRider(
             @PathVariable String riderId){
-        return ResponseEntity.ok(rideService.getRiderByRider(riderId));
+        return ResponseEntity.ok(rideService.getRidesByRider(riderId));
     }
 
     //driver side api calls
